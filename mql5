@@ -1,0 +1,99 @@
+mql5
+//+------------------------------------------------------------------+
+//|                                               EA Pivot SR MT5    |
+//|                                       https://www.forexroboteasy.com   |
+//|                                                    Forex Robot Easy Team |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+#include <Trade\Trade.mqh>
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+input int       IntradayOrdersDelay = 1; // Delay in hours before placing intraday pending orders
+input double    LotSize = 0.01; // Lot size for pending orders
+input int       SL = 50; // Stop loss in pips
+input int       TP = 100; // Take profit in pips
+input double    RiskPercentage = 2; // Risk percentage per trade
+input int       MaxOrders = 5; // Maximum number of pending orders
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   static datetime lastTradeTime = 0; // Last trade execution time
+   datetime currentTradeTime = TimeCurrent();
+
+   // Check if it's a new trading day
+   if (currentTradeTime > lastTradeTime + PeriodSeconds(PERIOD_D1))
+   {
+      lastTradeTime = currentTradeTime;
+
+      // Delete all pending orders from previous day
+      for (int i = 0; i < OrdersTotal(); i++)
+      {
+         if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         {
+            if (OrderSymbol() == Symbol() && OrderType() == OP_PENDING)
+            {
+               OrderDelete(OrderTicket());
+            }
+         }
+      }
+
+      // Calculate support and resistance levels using Pivot Point system
+      double pivot = (High[1] + Low[1] + Close[1]) / 3;
+      double resistance1 = 2 * pivot - Low[1];
+      double support1 = 2 * pivot - High[1];
+
+      // Place intraday pending orders
+      for (int i = 0; i < MaxOrders; i++)
+      {
+         double price;
+         int type;
+
+         if (i % 2 == 0)
+         {
+            price = resistance1;
+            type = OP_SELLSTOP;
+         }
+         else
+         {
+            price = support1;
+            type = OP_BUYSTOP;
+         }
+
+         double stopLoss = price + SL * Point;
+         double takeProfit = price - TP * Point;
+
+         double riskAmount = AccountBalance() * RiskPercentage / 100;
+         double maxLotSize = riskAmount / MathAbs(stopLoss - price);
+
+         double lotSize = MathMin(LotSize, maxLotSize);
+
+         Trade.SendPendingOrder(type, Symbol(), lotSize, price, stopLoss, takeProfit, 'Pivot SR MT5');
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   // Delete all pending orders on deinitialization
+   for (int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      if (OrderSelect(i, SELECT_BY_POS))
+      {
+         if (OrderSymbol() == Symbol() && OrderType() == OP_PENDING)
+         {
+            OrderDelete(OrderTicket());
+         }
+      }
+   }
+}
